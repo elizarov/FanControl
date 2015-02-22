@@ -10,7 +10,7 @@ const unsigned long RPM_UPDATE = 1000L;
 const unsigned long RPM_REPORT = 60000L;
 
 uint16_t pulseCnt;
-uint16_t fanRPM;
+rpm_t fanRPM;
 unsigned long lastCheck;
 
 // count high-to-low transisitions
@@ -37,7 +37,7 @@ void checkFan() {
   cnt = pulseCnt; // atomic counter read and rest
   pulseCnt = 0;
   sei();
-  fanRPM = cnt * RPM_REPORT / dt; 
+  fanRPM = rpm_t(cnt * RPM_REPORT / dt); 
   lastCheck = time;
 }
 
@@ -54,6 +54,6 @@ rpm_t getFanRPM() {
 }
 
 voltage_t getVoltage() {
-  return (analogRead(V_PIN) * 5L * voltage_t::multiplier * (RH + RL)) / (RL * 1024L);
+  return voltage_t((analogRead(V_PIN) * 5L * voltage_t::multiplier * (RH + RL)) / (RL * 1024L));
 }
 

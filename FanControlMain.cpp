@@ -10,7 +10,7 @@
 #include <FixNum.h>
 #include <TWIMaster.h>
 #include <SHT1X.h>
-#include <HIH6120.h>
+#include <HIH.h>
 
 // project libs
 #include "Pins.h"
@@ -36,7 +36,7 @@ LCDLog lcd(RS_PIN, RW_PIN, EN_PIN, D4_PIN, D5_PIN, D6_PIN, D7_PIN, WIDTH, HEIGHT
 BlinkLed blinkLed(STATUS_LED_PIN);
 Button button(BUTTON_PIN);
 SHT1X sht1x(SHT1X_CLK_PIN, SHT1X_DATA_PIN);
-HIH6120 hih6120(TWI_10K);
+HIH hih;
 Timeout tempInUpdated;
 Timeout tempOutUpdated;
 Timeout updateTimeout(UPDATE_INTERVAL);
@@ -55,8 +55,8 @@ inline void updateData() {
   FanControlData d;
   d.tempIn = sht1x.getTemp();
   d.rhIn = sht1x.getRH();
-  d.tempOut = hih6120.getTemp();           
-  d.rhOut = hih6120.getRH();
+  d.tempOut = hih.getTemp();           
+  d.rhOut = hih.getRH();
   d.voltage = getVoltage();
   d.fanPower = isFanPower();
   d.fanRPM = getFanRPM();
@@ -68,7 +68,7 @@ inline void updateData() {
 }
 
 inline void uploadData() {
-  uploadState = TWIMaster(TWI_10K).transmit(FAN_CONTROL_ADDR, (uint8_t*)&data, sizeof(data));
+  uploadState = TWIMaster.transmit(FAN_CONTROL_ADDR, (uint8_t*)&data, sizeof(data));
 }
 
 // alternative display
@@ -118,7 +118,7 @@ inline void debugDump() {
   Serial.print(' ');
   Serial.print(data.rhOut.format());
   Serial.print(F("% state="));
-  Serial.println(hih6120.getState(), HEX);
+  Serial.println(hih.getState(), HEX);
   
   Serial.print(F(" IN=")); 
   Serial.print(data.tempIn.format());
@@ -151,7 +151,7 @@ void loop() {
     tempInUpdated.reset(BLINK_INTERVAL);
     update = true;
   }
-  if (hih6120.check()) {
+  if (hih.check()) {
     tempOutUpdated.reset(BLINK_INTERVAL);
     update = true;
   }

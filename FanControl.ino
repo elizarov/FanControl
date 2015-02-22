@@ -9,6 +9,6 @@
 #include <FixNum.h>
 #include <TWIMaster.h>
 #include <SHT1X.h>
-#include <HIH6120.h>
+#include <HIH.h>
 
 // see FanControlMain.cpp
