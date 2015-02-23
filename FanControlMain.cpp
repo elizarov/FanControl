@@ -11,6 +11,7 @@
 #include <TWIMaster.h>
 #include <SHT1X.h>
 #include <HIH.h>
+#include <Humidity.h>
 
 // project libs
 #include "Pins.h"
@@ -26,37 +27,71 @@ const uint8_t HEIGHT = 2;
 const uint8_t WIDTH = 16;
 const uint8_t BACKLIGHT = 128;
 
-const unsigned long BLINK_INTERVAL = Timeout::SECOND;
-const unsigned long UPLOAD_FAIL_BLINK_INTERVAL = 250;
-const unsigned long UPDATE_INTERVAL = Timeout::SECOND;
+const long BLINK_INTERVAL = Timeout::SECOND;
+const long UPLOAD_FAIL_BLINK_INTERVAL = 250;
+const long UPDATE_INTERVAL = Timeout::SECOND;
 
-// ---------------- object definitions ----------------
+const long LONG_BUTTON_PRESSED = Timeout::SECOND;
+
+const int TEMP_DELTA = 1; // assume +/- 1 degree error in temperature
+const int RH_DELTA = 5; // assume +/- 5% error in humidity
+
+const int TEMP_HOT = 5;
+const int TEMP_COLD = 1;
+const int RH_DRY = 30;
+
+// ---------------- object and variable definitions ----------------
 
 LCDLog lcd(RS_PIN, RW_PIN, EN_PIN, D4_PIN, D5_PIN, D6_PIN, D7_PIN, WIDTH, HEIGHT);
 BlinkLed blinkLed(STATUS_LED_PIN);
 Button button(BUTTON_PIN);
-SHT1X sht1x(SHT1X_CLK_PIN, SHT1X_DATA_PIN);
-HIH hih;
+SHT1X sensorIn(SHT1X_CLK_PIN, SHT1X_DATA_PIN);
+HIH sensorOut;
 Timeout tempInUpdated;
 Timeout tempOutUpdated;
 Timeout updateTimeout(UPDATE_INTERVAL);
 Timeout debugDumpTimeout(0);
+Timeout forceFanTimeout;
 FanControlData data;
+
+wvp_t wvpIn;
+wvp_t wvpOut;
+Cond cond;
+
 uint8_t uploadState = 0xff; // 0 when no error, error code otherwise
 
 // ---------------- code ----------------
 
-void updateState() {
-  setFanPower(millis() % 60000L < 40000L);
+inline Cond computeCond() {
+  if (!sensorIn.getTemp() || !sensorOut.getTemp())
+    return COND_NA;
+  if (sensorIn.getTemp() > TEMP_HOT && sensorOut.getTemp() > sensorIn.getTemp())
+    return COND_HOT;
+  if (sensorIn.getTemp() < TEMP_COLD && sensorOut.getTemp() < sensorIn.getTemp())
+    return COND_COLD;
+  if (!wvpIn || !wvpOut)
+    return COND_NA;
+  if (wvpIn <= wvpOut)
+    return COND_DRY;
+  return COND_DAMP;  
+}
+
+void updateCond() {
+  cond = computeCond();
+}
+
+void updateFanState() {
+  setFanPower(cond == COND_DAMP);
 }
 
 inline void updateData() {
   // update data
   FanControlData d;
-  d.tempIn = sht1x.getTemp();
-  d.rhIn = sht1x.getRH();
-  d.tempOut = hih.getTemp();           
-  d.rhOut = hih.getRH();
+  d.tempIn = sensorIn.getTemp();
+  d.rhIn = sensorIn.getRH();
+  d.tempOut = sensorOut.getTemp();           
+  d.rhOut = sensorOut.getRH();
+  d.cond = cond;
   d.voltage = getVoltage();
   d.fanPower = isFanPower();
   d.fanRPM = getFanRPM();
@@ -74,17 +109,29 @@ inline void uploadData() {
 // alternative display
 inline void updateLCDAlt() {
   lcd.home();
-  lcd.print("Alt 1");
-  lcd.clearToRight();
+  lcd.print(wvpOut.format(6, FMT_RIGHT | 3));
+  lcd.println();
 
-  lcd.setCursor(0, 1);
-  lcd.print("Alt 2");
-  lcd.clearToRight();
+  lcd.print(wvpIn.format(6, FMT_RIGHT | 3));
+  lcd.print(' ');
+  lcd.print(data.voltage.format(4, FMT_RIGHT | 1));
+  lcd.print("V");
+  lcd.println();
+}
+
+inline void printCond() {
+  switch (cond) {
+  case COND_NA:   lcd.print(F("????")); break;
+  case COND_HOT:  lcd.print(F(" HOT")); break;
+  case COND_COLD: lcd.print(F("COLD")); break;
+  case COND_DRY:  lcd.print(F(" DRY")); break;
+  case COND_DAMP: lcd.print(F("DAMP")); break;
+  }
 }
 
 // main display 
 inline void updateLCD() {
-  if (button) {
+  if (button.pressed() > LONG_BUTTON_PRESSED) {
     updateLCDAlt(); // alternative display
     return;
   }
@@ -94,19 +141,18 @@ inline void updateLCD() {
   lcd.print(data.rhOut.format(3, FMT_RIGHT));
   lcd.print('%');
   lcd.print(tempOutUpdated.enabled() ? '*' : ' '); 
-  lcd.print(data.fanRPM.format(4, FMT_RIGHT));
-  lcd.print('r');
-  lcd.clearToRight();
+  lcd.print(' ');
+  printCond();
+  lcd.println();
 
-  lcd.setCursor(0, 1);
   lcd.print(data.tempIn.format(5, FMT_SIGN | FMT_RIGHT | 1));
   lcd.print(' ');
   lcd.print(data.rhIn.format(3, FMT_RIGHT));
   lcd.print('%');
   lcd.print(tempInUpdated.enabled() ? '*' : ' '); 
-  lcd.print(data.voltage.format(4, FMT_RIGHT | 1));
-  lcd.print("V");
-  lcd.clearToRight();
+  lcd.print(data.fanRPM.format(4, FMT_RIGHT));
+  lcd.print('r');
+  lcd.println();
 }
 
 inline void debugDump() {
@@ -118,14 +164,14 @@ inline void debugDump() {
   Serial.print(' ');
   Serial.print(data.rhOut.format());
   Serial.print(F("% state="));
-  Serial.println(hih.getState(), HEX);
+  Serial.println(sensorOut.getState(), HEX);
   
   Serial.print(F(" IN=")); 
   Serial.print(data.tempIn.format());
   Serial.print(' ');
   Serial.print(data.rhIn.format());
   Serial.print(F("% state="));
-  Serial.println(sht1x.getState(), HEX);
+  Serial.println(sensorIn.getState(), HEX);
   
   Serial.print(F("  V="));
   Serial.print(data.voltage.format());
@@ -144,24 +190,28 @@ void setup() {
 }
 
 void loop() {
-  checkFan();
-  updateState();
   bool update = false;
-  if (sht1x.check()) {
+  if (sensorIn.check()) {
+    wvpIn = waterVaporPressure(sensorIn.getTemp() - TEMP_DELTA, sensorIn.getRH() - RH_DELTA);
+    updateCond();
     tempInUpdated.reset(BLINK_INTERVAL);
     update = true;
   }
-  if (hih.check()) {
+  if (sensorOut.check()) {
+    wvpOut = waterVaporPressure(sensorOut.getTemp() + TEMP_DELTA, sensorOut.getRH() + RH_DELTA);
+    updateCond();
     tempOutUpdated.reset(BLINK_INTERVAL);
     update = true;
   }
 
+  update |= checkFan();
   update |= updateTimeout.check();
   update |= tempInUpdated.check();
   update |= tempOutUpdated.check();
   update |= button.check();
 
   if (update) {
+    updateFanState();
     updateData();
     uploadData();
     updateLCD();

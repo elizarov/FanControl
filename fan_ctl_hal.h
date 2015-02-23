@@ -8,7 +8,7 @@ typedef FixNum<int,0> rpm_t;
 typedef FixNum<int,1> voltage_t;
 
 void setupFan();
-void checkFan();
+bool checkFan();
 bool isFanPower();
 void setFanPower(bool on);
 rpm_t getFanRPM();

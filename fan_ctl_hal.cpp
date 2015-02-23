@@ -27,11 +27,11 @@ void setupFan() {
   PCIFR |= _BV(PCIF1); // clear PCI1 flag
 }
 
-void checkFan() {
+bool checkFan() {
   unsigned long time = millis();
   unsigned long dt = time - lastCheck;
   if (dt < RPM_UPDATE) 
-    return;
+    return false;
   uint16_t cnt;
   cli();  
   cnt = pulseCnt; // atomic counter read and rest
@@ -39,6 +39,7 @@ void checkFan() {
   sei();
   fanRPM = rpm_t(cnt * RPM_REPORT / dt); 
   lastCheck = time;
+  return true;
 }
 
 bool isFanPower() {
