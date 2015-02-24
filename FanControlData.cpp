@@ -11,13 +11,14 @@ static uint8_t crc8(uint8_t *ptr, uint8_t n) {
 }
 
 void FanControlData::clear() {
-  tempIn.setInvalid();
-  rhIn.setInvalid();
-  tempOut.setInvalid();
-  rhOut.setInvalid();
-  voltage.setInvalid();
+  tempIn.clear();
+  rhIn.clear();
+  tempOut.clear();
+  rhOut.clear();
+  cond = COND_NA;
+  voltage.clear();
   fanPower = false;
-  fanRPM.setInvalid();
+  fanRPM.clear();
 }
 
 void FanControlData::fillCRC() {
