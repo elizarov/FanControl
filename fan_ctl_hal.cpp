@@ -42,10 +42,6 @@ bool checkFan() {
   return true;
 }
 
-bool isFanPower() {
-  return digitalRead(POWER_PIN);
-}
-
 void setFanPower(bool on) {
   digitalWrite(POWER_PIN, on);
 }

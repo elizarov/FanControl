@@ -1,5 +1,5 @@
-#ifndef LOGGER_PROTO_H_
-#define LOGGER_PROTO_H_
+#ifndef FAN_CONTROL_DATA_H_
+#define FAN_CONTROL_DATA_H_
 
 #include <Arduino.h>
 #include <FixNum.h>
@@ -16,26 +16,48 @@ enum Cond {
   COND_DAMP, // damp inside -- turn on the fan to dry it out (!)
 };
 
-// ---------------- data ----------------
+// ---------------- FanControlData ----------------
 // FanControl master transmit to FAN_CONTROL_ADDR
-// Logger slaver receive
+// Logger slave receive
 
 struct FanControlData {
-  FixNum<int,1> tempIn;
-  FixNum<byte,0> rhIn;
-  FixNum<int,1> tempOut;
-  FixNum<byte,0> rhOut;
+  FixNum<int16_t,1> tempIn;
+  FixNum<int8_t,0> rhIn;
+  FixNum<int16_t,1> tempOut;
+  FixNum<int8_t,0> rhOut;
   Cond cond;
-  FixNum<int,1> voltage;
+  FixNum<int16_t,1> voltage; // source voltage
   bool fanPower;
-  FixNum<int,0> fanRPM;
+  FixNum<int16_t,0> fanRPM;
   uint8_t crc;
 
   void clear();
-  void fillCRC();
-  bool checkCRC();
+  void prepare();
+  bool ok() const;
+};
 
-  inline FanControlData() { clear(); }
+// ---------------- charge ----------------
+
+enum Charge {
+  CHARGE_OFF,
+  CHARGE_ON,
+  CHARGE_DONE,
+  CHARGE_ERROR
+};
+
+// ---------------- LoggerData ----------------
+// FanControl master receive from FAN_CONTROL_ADDR
+// Logger slave transmit
+struct LoggerData {
+  FixNum<int16_t,1> tempRef; // reference temperature
+  FixNum<int16_t,2> voltage; // regulated 
+  Charge charge;
+  byte zero; // always zero
+  uint8_t crc;
+
+  void clear();
+  void prepare();
+  bool ok() const;
 };
 
 #endif

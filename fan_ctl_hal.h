@@ -9,7 +9,6 @@ typedef FixNum<int,1> voltage_t;
 
 void setupFan();
 bool checkFan();
-bool isFanPower();
 void setFanPower(bool on);
 rpm_t getFanRPM();
 voltage_t getVoltage();

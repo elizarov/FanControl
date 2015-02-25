@@ -11,24 +11,25 @@ static uint8_t crc8(uint8_t *ptr, uint8_t n) {
 }
 
 void FanControlData::clear() {
-  tempIn.clear();
-  rhIn.clear();
-  tempOut.clear();
-  rhOut.clear();
-  cond = COND_NA;
-  voltage.clear();
-  fanPower = false;
-  fanRPM.clear();
+  *this = FanControlData();
 }
 
-void FanControlData::fillCRC() {
+void FanControlData::prepare() {
   crc = crc8((uint8_t*)this, sizeof(FanControlData) - 1);
 }
 
-bool FanControlData::checkCRC() {
-  if (crc == crc8((uint8_t*)this, sizeof(FanControlData) - 1))
-    return true; // ok
-  clear();
-  return false;
+bool FanControlData::ok() const {
+  return crc == crc8((uint8_t*)this, sizeof(FanControlData) - 1);
 }
 
+void LoggerData::clear() {
+  *this = LoggerData();
+}
+
+void LoggerData::prepare() {
+  crc = crc8((uint8_t*)this, sizeof(LoggerData) - 1);
+}
+
+bool LoggerData::ok() const {
+  return crc == crc8((uint8_t*)this, sizeof(LoggerData) - 1) && zero == 0;
+}
