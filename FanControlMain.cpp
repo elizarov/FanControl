@@ -8,6 +8,8 @@
 #include <Button.h>
 #include <BlinkLed.h>
 #include <FixNum.h>
+#include <FmtRef.h>
+#include <Uptime.h>
 #include <TWIMaster.h>
 #include <SHT1X.h>
 #include <HIH.h>
@@ -15,11 +17,12 @@
 
 // project libs
 #include "Pins.h"
-#include "FanControlData.h"
+#include "LoggerData.h"
 #include "LCDLog.h"
 #include "fan_ctl_hal.h"
 
 #include <avr/sleep.h>
+#include <string.h>
 
 // ---------------- constant definitions ----------------
 
@@ -31,7 +34,7 @@ const long BLINK_INTERVAL = 1000;
 const long UPLOAD_FAIL_BLINK_INTERVAL = 250;
 
 const long UPDATE_INTERVAL = 1000;
-const long UPLOAD_INTERVAL = 1000;
+const long UPLOAD_INTERVAL = 5000;
 
 const long LONG_BUTTON_PRESSED = 1000;
 
@@ -41,6 +44,16 @@ const int RH_DELTA = 5; // assume +/- 5% error in humidity
 const int TEMP_HOT = 5;
 const int TEMP_COLD = 1;
 const int RH_DRY = 30;
+
+// ---------------- condition ----------------
+
+enum Cond {
+  COND_NA, // not available
+  COND_HOT, // too hot inside
+  COND_COLD, // too cold inside
+  COND_DRY, // dry inside 
+  COND_DAMP, // damp inside -- turn on the fan to dry it out (!)
+};
 
 // ---------------- object and variable definitions ----------------
 
@@ -55,8 +68,6 @@ Timeout updateTimeout(UPDATE_INTERVAL);
 Timeout uploadTimeout(UPLOAD_INTERVAL);
 Timeout debugDumpTimeout(0);
 Timeout forceFanTimeout;
-FanControlData data;
-LoggerData logger;
 
 wvp_t wvpIn;
 wvp_t wvpOut;
@@ -64,6 +75,21 @@ Cond cond;
 bool fanPower;
 
 uint8_t uploadState = 0xff; // 0 when no error, error code otherwise
+
+LoggerOut logger;
+LoggerIn data = { 0, "i+??.? ??% o+??.? ??% v??.?p?r?????" };
+
+FmtRef iRef(data.buf, 'i');
+FmtRef ihRef(iRef);
+FmtRef oRef(data.buf, 'o');
+FmtRef ohRef(oRef);
+FmtRef vRef(data.buf, 'v');
+FmtRef pRef(data.buf, 'p');
+FmtRef rRef(data.buf, 'r');
+
+inline void setupData() {
+  data.size = strlen(data.buf);
+}
 
 // ---------------- code ----------------
 
@@ -90,28 +116,34 @@ inline void updateFanPower() {
   setFanPower(fanPower);
 }
 
-void updateData() {
-  data.tempIn = sensorIn.getTemp();
-  data.rhIn = sensorIn.getRH();
-  data.tempOut = sensorOut.getTemp();           
-  data.rhOut = sensorOut.getRH();
-  data.cond = cond;
-  data.voltage = getVoltage();
-  data.fanPower = fanPower;
-  data.fanRPM = getFanRPM();
-  data.prepare();
-}
-
 inline void uploadData() {
   if (!uploadTimeout.check())
     return;
   uploadTimeout.reset(UPLOAD_INTERVAL);  
-  updateData(); // upload fresh data
-  uploadState = TWIMaster.transmitReceive(FAN_CONTROL_ADDR, data, logger);
-  if (uploadState == 0 && !logger.ok())
-    uploadState = 0xfd; // wrong data received from logger
+  // format data
+  iRef = sensorIn.getTemp();
+  ihRef = sensorIn.getRH();
+  oRef = sensorOut.getTemp();           
+  ohRef = sensorOut.getRH();
+  vRef = getVoltage();
+  pRef = fanPower ? 1 : 0;
+  rRef = getFanRPM();
+  // computes crc
+  data.prepare();
+  // transmit
+  uploadState = TWIMaster.transmit(LOGGER_ADDR, &data, data.txSize(), true);
+  if (uploadState == 0) {
+    uploadState = TWIMaster.receive(LOGGER_ADDR, logger);
+    if (uploadState == 0 && !logger.ok())
+      uploadState = 0xfd; // wrong data received from logger
+  }
   if (uploadState != 0)
     logger.clear();  
+  // debug dump to serial  
+  Serial.print(F("FanCtrl: ["));
+  Serial.print(data.buf);
+  Serial.print(F("] state="));
+  Serial.println(uploadState, HEX);
 }
 
 //  Alternative display
@@ -136,7 +168,7 @@ inline void updateLCDAlt() {
   lcd.print(uploadState & 0xf, HEX);
   lcd.print(']');
   lcd.print(' ');
-  lcd.print(data.voltage.format(4, FMT_RIGHT | 1));
+  lcd.print(getVoltage().format(4, FMT_RIGHT | 1));
   lcd.println();
 }
 
@@ -162,52 +194,27 @@ inline void updateLCD() {
     return;
   }
   lcd.home();
-  lcd.print(data.tempOut.format(5, FMT_SIGN | FMT_RIGHT | 1));
+  lcd.print(sensorOut.getTemp().format(5, FMT_SIGN | FMT_RIGHT | 1));
   lcd.print(' ');
-  lcd.print(data.rhOut.format(2, FMT_RIGHT));
+  lcd.print(sensorOut.getRH().format(2, FMT_RIGHT));
   lcd.print('%');
   lcd.print(tempOutUpdated.enabled() ? '*' : ' '); 
   lcd.print(' ');
   printCond();
   lcd.println();
 
-  lcd.print(data.tempIn.format(5, FMT_SIGN | FMT_RIGHT | 1));
+  lcd.print(sensorIn.getTemp().format(5, FMT_SIGN | FMT_RIGHT | 1));
   lcd.print(' ');
-  lcd.print(data.rhIn.format(2, FMT_RIGHT));
+  lcd.print(sensorIn.getRH().format(2, FMT_RIGHT));
   lcd.print('%');
   lcd.print(' ');
   lcd.print(tempInUpdated.enabled() ? '*' : ' '); 
-  lcd.print(data.fanRPM.format(5, FMT_RIGHT));
+  lcd.print(getFanRPM().format(5, FMT_RIGHT));
   lcd.println();
 }
-
-inline void debugDump() {
-  if (!debugDumpTimeout.check()) 
-    return;
-  Serial.println(F("--- FanCtrl ---"));  
-  Serial.print(F("OUT=")); 
-  Serial.print(data.tempOut.format());
-  Serial.print(' ');
-  Serial.print(data.rhOut.format());
-  Serial.print(F("% state="));
-  Serial.println(sensorOut.getState(), HEX);
-  
-  Serial.print(F(" IN=")); 
-  Serial.print(data.tempIn.format());
-  Serial.print(' ');
-  Serial.print(data.rhIn.format());
-  Serial.print(F("% state="));
-  Serial.println(sensorIn.getState(), HEX);
-  
-  Serial.print(F("  V="));
-  Serial.print(data.voltage.format());
-  Serial.print(F(" upload="));
-  Serial.println(uploadState, HEX);
-  
-  debugDumpTimeout.reset(1000); 
-}
-                                                                                             
+                                                                                         
 void setup() {
+  setupData();
   Serial.begin(57600); // debug output only
   Serial.println(F("*** FanCtrl ***"));
   analogWrite(BL_PIN, BACKLIGHT);
@@ -238,13 +245,11 @@ void loop() {
 
   if (update) {
     updateFanPower();
-    updateData();
     updateLCD();
     updateTimeout.reset(UPDATE_INTERVAL); // force periodic update regardless
   }
 
   uploadData();
-  debugDump();
   blinkLed.blink(uploadState != 0 ? UPLOAD_FAIL_BLINK_INTERVAL : BLINK_INTERVAL);
   sleep_mode(); // save some power
 }

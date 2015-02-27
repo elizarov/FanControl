@@ -7,6 +7,8 @@
 #include <Button.h>
 #include <BlinkLed.h>
 #include <FixNum.h>
+#include <FmtRef.h>
+#include <Uptime.h>
 #include <TWIMaster.h>
 #include <SHT1X.h>
 #include <HIH.h>
