@@ -119,12 +119,13 @@ void updateCond() {
 inline void updateFanPower() {
   if (forceFanTimeout.enabled()) {
     fanPower = true;  
+    fanPowerTimeout.reset(0); // immediately recheck when fan power forced timer expires 
   } else {
     if (!fanPowerTimeout.check())
       return;
+    fanPowerTimeout.reset(FAN_POWER_INTERVAL);  
     fanPower = (cond == COND_DAMP) && getVoltage() > MIN_FAN_VOLTAGE;
   }    
-  fanPowerTimeout.reset(FAN_POWER_INTERVAL);  
   setFanPower(fanPower);
 }
 
