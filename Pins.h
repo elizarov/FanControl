@@ -26,8 +26,8 @@ D11   PB3   SHT1x DATA       // SHT1X_DATA_PIN
 D12   PB4   BUTTON           // BUTTON_PIN
 D13   PB5   STATUS LED       // STATUS_LED_PIN
            
-A0    PC0   FAN SENSE        // SENSE_PIN 
-A1    PC1   FAN ON           // POWER_PIN 
+A0    PC0   FAN SENSE        // FAN_SENSE_PIN 
+A1    PC1   FAN ON           // FAN_POWER_PIN 
 A2    PC2   VOLTAGE          // V_PIN 
 A3    PC3   WATER            // WATER PIN
 A4    PC4   SDA  \ I2C
@@ -55,8 +55,8 @@ const uint8_t SHT1X_DATA_PIN = 11;
 const uint8_t BUTTON_PIN = 12;
 const uint8_t STATUS_LED_PIN = 13;
 
-const uint8_t SENSE_PIN = A0; // PC0/PCINT8
-const uint8_t POWER_PIN = A1;
+const uint8_t FAN_SENSE_PIN = A0; // PC0/PCINT8
+const uint8_t FAN_POWER_PIN = A1;
 const uint8_t V_PIN = A2;
 const uint8_t WATER_PIN = A3;
 
