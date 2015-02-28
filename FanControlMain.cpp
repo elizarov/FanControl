@@ -36,6 +36,8 @@ const long UPLOAD_FAIL_BLINK_INTERVAL = 250;
 const long UPDATE_INTERVAL = 1000;
 const long UPLOAD_INTERVAL = 5000;
 
+const long FAN_POWER_INTERVAL = 30000; // don't update fan power state too often
+
 const long LONG_BUTTON_PRESSED = 1000;
 
 const int TEMP_DELTA = 1; // assume +/- 1 degree error in temperature
@@ -44,6 +46,8 @@ const int RH_DELTA = 5; // assume +/- 5% error in humidity
 const int TEMP_HOT = 5;
 const int TEMP_COLD = 1;
 const int RH_DRY = 30;
+
+const int MIN_FAN_VOLTAGE = 7; // 7V or more
 
 // ---------------- condition ----------------
 
@@ -67,6 +71,7 @@ Timeout tempOutUpdated;
 Timeout updateTimeout(UPDATE_INTERVAL);
 Timeout uploadTimeout(UPLOAD_INTERVAL);
 Timeout debugDumpTimeout(0);
+Timeout fanPowerTimeout(0);
 Timeout forceFanTimeout;
 
 wvp_t wvpIn;
@@ -112,8 +117,37 @@ void updateCond() {
 }
 
 inline void updateFanPower() {
-  fanPower = (cond == COND_DAMP);
+  if (forceFanTimeout.enabled()) {
+    fanPower = true;  
+  } else {
+    if (!fanPowerTimeout.check())
+      return;
+    fanPower = (cond == COND_DAMP) && getVoltage() > MIN_FAN_VOLTAGE;
+  }    
+  fanPowerTimeout.reset(FAN_POWER_INTERVAL);  
   setFanPower(fanPower);
+}
+
+int forceFanRemainingMins() {
+  long rem = forceFanTimeout.remaining();
+  return rem == 0 ? 0 : (rem + Timeout::MINUTE - 1) / Timeout::MINUTE;
+}
+
+inline void onShortButtonPress() {
+  int rem = forceFanRemainingMins();
+  if (rem == 0)  
+    rem = 1;
+  else if (rem < 5)
+    rem = 5;
+  else if (rem < 15)
+    rem = 15;
+  else if (rem < 60)
+    rem = 60;
+  else if (rem < 120)
+    rem = 120;
+  else 
+    rem = 0;
+  forceFanTimeout.reset(rem * Timeout::MINUTE);  
 }
 
 inline void uploadData() {
@@ -200,15 +234,20 @@ inline void updateLCD() {
   lcd.print('%');
   lcd.print(tempOutUpdated.enabled() ? '*' : ' '); 
   lcd.print(' ');
-  printCond();
+  int rem = forceFanRemainingMins();
+  if (rem > 0) {
+    lcd.print(fixnum16_0(rem).format(4, FMT_RIGHT));
+    lcd.print('m');
+  } else  
+    printCond();
   lcd.println();
 
   lcd.print(sensorIn.getTemp().format(5, FMT_SIGN | FMT_RIGHT | 1));
   lcd.print(' ');
   lcd.print(sensorIn.getRH().format(2, FMT_RIGHT));
   lcd.print('%');
-  lcd.print(' ');
   lcd.print(tempInUpdated.enabled() ? '*' : ' '); 
+  lcd.print(' ');
   lcd.print(getFanRPM().format(5, FMT_RIGHT));
   lcd.println();
 }
@@ -242,7 +281,12 @@ void loop() {
   update |= tempInUpdated.check();
   update |= tempOutUpdated.check();
   update |= button.check();
+  update |= forceFanTimeout.check();
 
+  long buttonReleased = button.released();
+  if (buttonReleased != 0 && buttonReleased < LONG_BUTTON_PRESSED)
+    onShortButtonPress();
+    
   if (update) {
     updateFanPower();
     updateLCD();

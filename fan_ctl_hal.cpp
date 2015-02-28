@@ -18,7 +18,7 @@ rpm_t fanRPM;
 unsigned long lastCheck;
 voltage_t voltage;
 
-Timeout voltageTimeout;
+Timeout voltageTimeout(0);
 
 // count high-to-low transisitions
 ISR(PCINT1_vect) {
