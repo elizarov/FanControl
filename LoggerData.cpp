@@ -22,7 +22,7 @@ void LoggerIn::prepare() {
 
 bool LoggerIn::ok(uint8_t rxSize) const {
   return rxSize > 0 && rxSize == size + 3 && buf[size] == 0 &&
-    buf[size + 1] == crc8((uint8_t*)this, size + 2);
+    uint8_t(buf[size + 1]) == crc8((uint8_t*)this, size + 2);
 }
 
 void LoggerOut::clear() {
@@ -34,5 +34,5 @@ void LoggerOut::prepare() {
 }
 
 bool LoggerOut::ok() const {
-  return zero == 0 && crc == crc8((uint8_t*)this, sizeof(LoggerOut) - 1);
+  return crc == crc8((uint8_t*)this, sizeof(LoggerOut) - 1);
 }

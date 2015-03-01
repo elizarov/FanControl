@@ -36,8 +36,8 @@ enum Charge {
 struct LoggerOut {
   FixNum<int16_t,1> tempRef; // reference temperature from DS18B20
   FixNum<int16_t,2> voltage; // input voltage at Logger
-  Charge charge;
-  byte zero; // always zero
+  Charge charge = CHARGE_OFF;
+  uint8_t lastError = 0; // last logger erorr (if non-zero)
   uint8_t crc;
 
   void clear();

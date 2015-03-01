@@ -170,15 +170,17 @@ inline void uploadData() {
   if (uploadState == 0) {
     uploadState = TWIMaster.receive(LOGGER_ADDR, logger);
     if (uploadState == 0 && !logger.ok())
-      uploadState = 0xfd; // wrong data received from logger
+      uploadState = 0xEE; // wrong data received from logger
   }
   if (uploadState != 0)
     logger.clear();  
   // debug dump to serial  
   Serial.print(F("FanCtrl: ["));
   Serial.print(data.buf);
-  Serial.print(F("] state="));
-  Serial.println(uploadState, HEX);
+  Serial.print(F("] uploadErr="));
+  Serial.print(uploadState, HEX);
+  Serial.print(F(" loggerErr="));
+  Serial.println(logger.lastError, HEX);
 }
 
 //  Alternative display
@@ -198,10 +200,19 @@ inline void updateLCDAlt() {
 
   lcd.print(wvpIn.format(6, FMT_RIGHT | 3));
   lcd.print(' ');
-  lcd.print('[');
-  lcd.print(uploadState >> 4, HEX);
-  lcd.print(uploadState & 0xf, HEX);
-  lcd.print(']');
+  if (uploadState != 0) {
+    lcd.print('[');
+    lcd.print(uploadState >> 4, HEX);
+    lcd.print(uploadState & 0xf, HEX);
+    lcd.print(']');
+  } else if (logger.lastError != 0) {
+    lcd.print('{');
+    lcd.print(logger.lastError >> 4, HEX);
+    lcd.print(logger.lastError & 0xf, HEX);
+    lcd.print('}');
+  } else {
+    lcd.print(F(" OK "));
+  }
   lcd.print(' ');
   lcd.print(getVoltage().format(4, FMT_RIGHT | 1));
   lcd.println();
@@ -295,7 +306,7 @@ void loop() {
   }
 
   uploadData();
-  blinkLed.blink(uploadState != 0 ? UPLOAD_FAIL_BLINK_INTERVAL : BLINK_INTERVAL);
+  blinkLed.blink(uploadState != 0 || logger.lastError != 0 ? UPLOAD_FAIL_BLINK_INTERVAL : BLINK_INTERVAL);
   sleep_mode(); // save some power
 }
 
